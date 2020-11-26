@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+#
+.vscode
+lab5
+Makefile
+CMakeFiles
+cmake_*
+CMakeCache*
+trash*
