@@ -13,33 +13,41 @@ struct custom_allocator {
     using const_pointer = const T *;
     using size_type = std::size_t;
 
-    size_t size = 0;
+    static const size_t cap = CAP;
+    std::size_t size = 0;
     pointer buf;
+    std::size_t free_size = 0;
     std::queue<pointer> free_mem;
 
     custom_allocator() noexcept {}
 
-    template <class U>
+    template <class U, size_t CU>
     struct rebind {
-        using other = custom_allocator<U>;
+        using other = custom_allocator<U, CU>;
     };
 
-    T *allocate(size_t n) {
-        if (size == 0){
+    T *allocate(std::size_t n) {
+        if (size == 0) {
             buf = reinterpret_cast<T*>(operator new(CAP * sizeof(T)));
-            for (size_t i = 0; i < CAP; i++) {
+            for (std::size_t i = 0; i < CAP; i++) {
                 free_mem.push(&(buf[i]));
+                free_size++;
             }
+            size = CAP;
         }
         T* to_return = free_mem.front();
-        free_mem.pop();
-        size++;
+        for (std::size_t i = 0; i < n; ++i) {
+            free_mem.pop();
+            free_size--;
+        }
+        std::cout << "Kek: " << free_size << "\n";
         return to_return;
     }
 
-    void deallocate(pointer p, size_t) {
+    void deallocate(pointer p, std::size_t) {
         free_mem.push(p);
-        if (size == CAP) {
+        free_size++;
+        if (free_size >= CAP) {
             ::operator delete(buf);
             free_mem.~queue();
             size--;
@@ -60,24 +68,30 @@ template <class T, class Allocator>
 class List {
     private:
         struct ListNode {
+            using allocator_type = typename Allocator::template rebind<ListNode, Allocator::cap>::other;
+
             std::unique_ptr<ListNode> _next;
             T _val;
-            T& get(size_t idx);
-            void insert(ListNode &prev, size_t idx,const T& val);
-            void erase(ListNode &prev, size_t idx);
-            void *operator new(size_t size) {
+            T& get(std::size_t idx);
+            void insert(ListNode &prev, std::size_t idx,const T& val);
+            void erase(ListNode &prev, std::size_t idx);
+
+            void *operator new(std::size_t size) {
                 return get_allocator().allocate(1);
             }
             void operator delete(void *p) {
                 get_allocator().destroy((ListNode*)p);
                 get_allocator().deallocate((ListNode *)p, 1);
             }
+            static allocator_type get_allocator() {
+                static allocator_type allocator;
+                return allocator;
+            }
         };
         std::unique_ptr<ListNode> _head;
-        size_t _size;
+        std::size_t _size;
     public:
         using value_type = T;
-        using allocator_type = typename Allocator::template rebind<ListNode>::other;
 
         class ListIterator {
             private: 
@@ -90,21 +104,18 @@ class List {
                 using reference = List::value_type&;
                 using pointer = List::value_type*;
                 using iterator_category = std::forward_iterator_tag;
-                ListIterator(List& l, size_t idx) : _list(l), _idx(idx) {}
+
+                ListIterator(List& l, std::size_t idx) : _list(l), _idx(idx) {}
                 ListIterator& operator++();
                 reference  operator*();
                 pointer operator->();
                 bool operator!=(const ListIterator& other);
                 bool operator==(const ListIterator& other);
         }; 
-        static allocator_type get_allocator() {
-            static allocator_type allocator;
-            return allocator;
-        }
         List<T, Allocator>::ListIterator begin();
         List<T, Allocator>::ListIterator end();
-        ListIterator insert(ListIterator it, T& val);
-        ListIterator erase(ListIterator it);
+        ListIterator insert(ListIterator& it, T& val);
+        ListIterator erase(ListIterator& it);
         T& operator[](size_t idx);
         size_t size();
 };
@@ -198,7 +209,7 @@ typename List<T, Allocator>::ListIterator List<T, Allocator>::end() {
 }
 
 template<class T, class Allocator>
-typename List<T, Allocator>::ListIterator List<T, Allocator>::insert(typename List<T, Allocator>::ListIterator it, T& val) {
+typename List<T, Allocator>::ListIterator List<T, Allocator>::insert(typename List<T, Allocator>::ListIterator& it, T& val) {
     if (it._idx > size()) {
         throw std::logic_error("Out of bounds");
     }
@@ -224,7 +235,7 @@ T& List<T, Allocator>::operator[](size_t idx){
 }
 
 template <class T, class Allocator>
-typename List<T, Allocator>::ListIterator List<T, Allocator>::erase(ListIterator iter) {
+typename List<T, Allocator>::ListIterator List<T, Allocator>::erase(ListIterator& iter) {
     if (iter._idx >= size()) {
         throw std::logic_error("Out of bounds");
     }
