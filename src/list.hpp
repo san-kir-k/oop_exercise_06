@@ -14,9 +14,9 @@ struct custom_allocator {
     using size_type = std::size_t;
 
     static const size_t cap = CAP;
-    std::size_t size = 0;
+    std::size_t size;
     pointer buf;
-    std::size_t free_size = 0;
+    std::size_t free_size;
     std::queue<pointer> free_mem;
 
     custom_allocator() noexcept {}
@@ -40,14 +40,13 @@ struct custom_allocator {
             free_mem.pop();
             free_size--;
         }
-        std::cout << "Kek: " << free_size << "\n";
         return to_return;
     }
 
     void deallocate(pointer p, std::size_t) {
         free_mem.push(p);
         free_size++;
-        if (free_size >= CAP) {
+        if (free_size > CAP) {
             ::operator delete(buf);
             free_mem.~queue();
             size--;
@@ -83,7 +82,7 @@ class List {
                 get_allocator().destroy((ListNode*)p);
                 get_allocator().deallocate((ListNode *)p, 1);
             }
-            static allocator_type get_allocator() {
+            static allocator_type& get_allocator() {
                 static allocator_type allocator;
                 return allocator;
             }
